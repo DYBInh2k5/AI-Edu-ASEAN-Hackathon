@@ -1,8 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+import json
+
 from app.ai.ai_service import AIService
+from app.models.db import SessionLocal, engine, get_db
+from app.models.analysis import Base, AnalysisRecord
 import logging
+
+# Create tables
+Base.metadata.create_all(bind=engine)
 
 # Setup logging
 logging.basicConfig(
@@ -16,7 +24,7 @@ app = FastAPI(title="AI-Edu API")
 # Add CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, specify your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,9 +40,18 @@ def read_root():
     return {"message": "Welcome to AI-Edu API"}
 
 @app.post("/analyze")
-def analyze_code(input: CodeInput):
+def analyze_code(input: CodeInput, db: Session = Depends(get_db)):
     logging.info(f"Analyzing code: {input.code[:50]}...")
     result = ai_service.analyze(input.code)
+    
+    # Save to Database
+    record = AnalysisRecord(
+        code_snippet=input.code,
+        analysis_result=json.dumps(result)
+    )
+    db.add(record)
+    db.commit()
+    
     return result
 
 if __name__ == "__main__":
